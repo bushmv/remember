@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type JWTManager struct {
@@ -16,7 +16,7 @@ func NewJWTManager(secretKey []byte) *JWTManager {
 	}
 }
 
-func (m *JWTManager) CreateJWTToken(claims jwt.MapClaims) (string, error) {
+func (m *JWTManager) CreateJWTToken(claims UserClaims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString(m.secretKey)
 	if err != nil {
@@ -25,16 +25,24 @@ func (m *JWTManager) CreateJWTToken(claims jwt.MapClaims) (string, error) {
 	return tokenString, nil
 }
 
-func (m *JWTManager) VerifyToken(tokenString string) (bool, error) {
-	var claims jwt.MapClaims
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+func (m *JWTManager) VerifyToken(tokenString string) (*jwt.Token, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &UserClaims{}, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+
+		}
 		return m.secretKey, nil
-	})
+	},
+		jwt.WithIssuer("remember"))
+
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if !token.Valid {
-		return false, fmt.Errorf("token not valid: %v", token)
+		return nil, fmt.Errorf("token not valid: %v", token)
 	}
-	return true, nil
+	if _, ok := token.Claims.(*UserClaims); !ok {
+		return nil, fmt.Errorf("cannot cast tp *UserClaims")
+	}
+	return token, nil
 }
